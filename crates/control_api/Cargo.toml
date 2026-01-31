@@ -13,14 +13,15 @@ log = "0.4"
 prometheus = "0.14"
 actix-web-prom = "0.6"
 once_cell = { workspace = true }
-uuid = { version = "1", features = ["v4"] }
-tokio-postgres = { version = "0.7", features = ["with-uuid-0_8"] }
+uuid = { version = "0.8", features = ["v4"] }
+tokio-postgres = { version = "0.7" }
 serde_qs = "0.7"
 jsonwebtoken = "8"
 argon2 = "0.4"
 tracing = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
-rand_core = "0.9"
+rand = { workspace = true }
+rand_core = { version = "0.6", features = ["getrandom"] }
 anyhow = "1"
 
 # Local workspace crates (integrate DNS core)

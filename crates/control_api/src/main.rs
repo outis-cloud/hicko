@@ -1,7 +1,6 @@
 use actix_web::{web, App, HttpResponse, HttpServer, Responder, HttpRequest, http::header};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use actix_web_prom::PrometheusMetrics;
 use log::{info, warn};
 use tokio_postgres::{NoTls, Client as PgClient};
 use uuid::Uuid;
@@ -41,7 +40,7 @@ struct Zone {
 
 #[derive(Clone)]
 struct AppState {
-    db: PgClient,
+    db: std::sync::Arc<PgClient>,
     jwt_secret: String,
 }
 
@@ -84,8 +83,9 @@ struct LoginResponse {
 
 async fn login(body: web::Json<LoginRequest>, data: web::Data<AppState>) -> impl Responder {
     let pool = &data.db;
-    if let Ok(row) = data.db.query_one("SELECT id, password_hash, role FROM users WHERE username = $1", &[&body.username]).await {
-        let id: Uuid = row.get(0);
+    if let Ok(row) = (&*data.db).query_one("SELECT id::text, password_hash, role FROM users WHERE username = $1", &[&body.username]).await {
+        let id_str: String = row.get(0);
+        let id = id_str.clone();
         let password_hash: String = row.get(1);
         let role: Option<String> = row.get(2);
         if let Ok(hash) = PasswordHash::new(&password_hash) {
@@ -102,12 +102,14 @@ async fn login(body: web::Json<LoginRequest>, data: web::Data<AppState>) -> impl
 
 async fn create_user(req: web::Json<LoginRequest>, data: web::Data<AppState>) -> impl Responder {
     let pool = &data.db;
-    let salt = SaltString::generate(&mut OsRng);
+    let mut rng = OsRng;
+    let salt = SaltString::generate(&mut rng);
     let argon2 = Argon2::default();
     let password_hash = argon2.hash_password(req.password.as_bytes(), &salt).unwrap().to_string();
     let id = Uuid::new_v4();
     let role = "user";
-    let res = data.db.execute("INSERT INTO users (id, username, password_hash, role) VALUES ($1, $2, $3, $4)", &[&id, &req.username, &password_hash, &role]).await;
+    let id_str = id.to_string();
+    let res = (&*data.db).execute("INSERT INTO users (id, username, password_hash, role) VALUES ($1::uuid, $2, $3, $4)", &[&id_str, &req.username, &password_hash, &role]).await;
     match res {
         Ok(_) => HttpResponse::Created().json(serde_json::json!({"id": id.to_string()})),
         Err(e) => {
@@ -136,8 +138,8 @@ async fn list_servers(data: web::Data<AppState>, req: HttpRequest) -> impl Respo
         return HttpResponse::Unauthorized().finish();
     }
     let pool = &data.db;
-    let rows = data.db.query("SELECT id, name, address, region FROM servers", &[]).await.unwrap_or_default();
-    let servers: Vec<ServerInfo> = rows.into_iter().map(|r| ServerInfo { id: r.get::<usize, Uuid>(0).to_string(), name: r.get(1), address: r.get(2), region: r.get(3) }).collect();
+    let rows = (&*data.db).query("SELECT id::text, name, address, region FROM servers", &[]).await.unwrap_or_default();
+    let servers: Vec<ServerInfo> = rows.into_iter().map(|r| ServerInfo { id: r.get::<usize, String>(0), name: r.get(1), address: r.get(2), region: r.get(3) }).collect();
     HttpResponse::Ok().json(servers)
 }
 
@@ -158,7 +160,8 @@ async fn create_server(body: web::Json<CreateServerReq>, data: web::Data<AppStat
     }
     let pool = &data.db;
     let id = Uuid::new_v4();
-    let res = data.db.execute("INSERT INTO servers (id, name, address, region) VALUES ($1, $2, $3, $4)", &[&id, &body.name, &body.address, &body.region]).await;
+    let id_str = id.to_string();
+    let res = (&*data.db).execute("INSERT INTO servers (id, name, address, region) VALUES ($1::uuid, $2, $3, $4)", &[&id_str, &body.name, &body.address, &body.region]).await;
     match res {
         Ok(_) => HttpResponse::Created().json(serde_json::json!({"id": id.to_string()})),
         Err(e) => {
@@ -177,7 +180,8 @@ struct AgentRegistration {
 async fn agent_register(body: web::Json<AgentRegistration>, data: web::Data<AppState>) -> impl Responder {
     let pool = &data.db;
     let id = Uuid::new_v4();
-    let res = data.db.execute("INSERT INTO agents (id, name, addr) VALUES ($1, $2, $3)", &[&id, &body.name, &body.addr]).await;
+    let id_str = id.to_string();
+    let res = (&*data.db).execute("INSERT INTO agents (id, name, addr) VALUES ($1::uuid, $2, $3)", &[&id_str, &body.name, &body.addr]).await;
     match res {
         Ok(_) => HttpResponse::Created().json(serde_json::json!({"id": id.to_string()})),
         Err(e) => {
@@ -189,7 +193,7 @@ async fn agent_register(body: web::Json<AgentRegistration>, data: web::Data<AppS
 
 async fn agent_heartbeat(body: web::Json<AgentRegistration>, data: web::Data<AppState>) -> impl Responder {
     let pool = &data.db;
-    let res = data.db.execute("UPDATE agents SET last_heartbeat = now() WHERE addr = $1", &[&body.addr]).await;
+    let res = (&*data.db).execute("UPDATE agents SET last_heartbeat = now() WHERE addr = $1", &[&body.addr]).await;
     match res {
         Ok(r) => {
             if r == 0 {
@@ -236,7 +240,9 @@ async fn create_georule(body: web::Json<CreateGeoRuleReq>, data: web::Data<FullS
         Ok(z) => z,
         Err(_) => return HttpResponse::BadRequest().body("invalid zone_id"),
     };
-    let res = data.inner.db.execute("INSERT INTO georules (id, zone_id, match_type, match_value, target) VALUES ($1, $2, $3, $4, $5)", &[&id, &zone_uuid, &body.match_type, &body.match_value, &body.target]).await;
+    let id_str = id.to_string();
+    let zone_str = zone_uuid.to_string();
+    let res = (&*data.inner.db).execute("INSERT INTO georules (id, zone_id, match_type, match_value, target) VALUES ($1::uuid, $2::uuid, $3, $4, $5)", &[&id_str, &zone_str, &body.match_type, &body.match_value, &body.target]).await;
     match res {
         Ok(_) => HttpResponse::Created().json(serde_json::json!({"id": id.to_string()})),
         Err(e) => { warn!("create_georule error: {}", e); HttpResponse::InternalServerError().finish() }
@@ -245,8 +251,8 @@ async fn create_georule(body: web::Json<CreateGeoRuleReq>, data: web::Data<FullS
 
 async fn list_georules(data: web::Data<FullState>, req: HttpRequest) -> impl Responder {
     if auth_from_header(&req, &data.inner.jwt_secret).is_none() { return HttpResponse::Unauthorized().finish(); }
-    let rows = data.inner.db.query("SELECT id, zone_id, match_type, match_value, target FROM georules", &[]).await.unwrap_or_default();
-    let out: Vec<_> = rows.into_iter().map(|r| serde_json::json!({"id": r.get::<usize, Uuid>(0).to_string(), "zone_id": r.get::<usize, Uuid>(1).to_string(), "match_type": r.get::<usize, String>(2), "match_value": r.get::<usize, String>(3), "target": r.get::<usize, String>(4)})).collect();
+    let rows = (&*data.inner.db).query("SELECT id::text, zone_id::text, match_type, match_value, target FROM georules", &[]).await.unwrap_or_default();
+    let out: Vec<_> = rows.into_iter().map(|r| serde_json::json!({"id": r.get::<usize, String>(0), "zone_id": r.get::<usize, String>(1), "match_type": r.get::<usize, String>(2), "match_value": r.get::<usize, String>(3), "target": r.get::<usize, String>(4)})).collect();
     HttpResponse::Ok().json(out)
 }
 
@@ -256,8 +262,8 @@ struct CreateZoneReq {
 }
 
 async fn list_zones(data: web::Data<AppState>, _req: HttpRequest) -> impl Responder {
-    let rows = data.db.query("SELECT id, domain FROM zones", &[]).await.unwrap_or_default();
-    let zones: Vec<Zone> = rows.into_iter().map(|r| Zone { id: r.get::<usize, Uuid>(0).to_string(), domain: r.get(1), records: vec![] }).collect();
+    let rows = (&*data.db).query("SELECT id::text, domain FROM zones", &[]).await.unwrap_or_default();
+    let zones: Vec<Zone> = rows.into_iter().map(|r| Zone { id: r.get::<usize, String>(0), domain: r.get(1), records: vec![] }).collect();
     HttpResponse::Ok().json(zones)
 }
 
@@ -266,7 +272,8 @@ async fn create_zone(body: web::Json<CreateZoneReq>, data: web::Data<AppState>, 
         return HttpResponse::Unauthorized().finish();
     }
     let id = Uuid::new_v4();
-    let res = data.db.execute("INSERT INTO zones (id, domain) VALUES ($1, $2)", &[&id, &body.domain]).await;
+    let id_str = id.to_string();
+    let res = (&*data.db).execute("INSERT INTO zones (id, domain) VALUES ($1::uuid, $2)", &[&id_str, &body.domain]).await;
     match res {
         Ok(_) => HttpResponse::Created().json(serde_json::json!({"id": id.to_string()})),
         Err(e) => {
@@ -297,8 +304,7 @@ async fn main() -> std::io::Result<()> {
         }
     });
     migrate_db(&client).await.expect("db migrate failed");
-
-    let app_state = AppState { db: client.clone(), jwt_secret: jwt_secret.clone() };
+    let app_state = AppState { db: std::sync::Arc::new(client), jwt_secret: jwt_secret.clone() };
 
     // Load GeoIP DB if provided
     let geo_db = std::env::var("GEOIP_DB_PATH").ok().and_then(|p| {
@@ -307,15 +313,11 @@ async fn main() -> std::io::Result<()> {
 
     let full_state = FullState { inner: app_state.clone(), geo: std::sync::Arc::new(tokio::sync::Mutex::new(GeoState { db: geo_db })) };
 
-    // Basic Prometheus metrics via actix-web-prom
-    let prometheus = PrometheusMetrics::new("control_api", Some("/metrics"), None);
-
-    let app_data = web::Data::new(app_state.clone());
+        let app_data = web::Data::new(app_state.clone());
     let full_data = web::Data::new(full_state.clone());
 
     HttpServer::new(move || {
         App::new()
-            .wrap(prometheus.clone())
             .app_data(app_data.clone())
             .app_data(full_data.clone())
             .route("/api/v1/auth/login", web::post().to(login))
