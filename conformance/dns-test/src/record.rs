@@ -803,6 +803,7 @@ pub struct NSEC3PARAM {
     pub hash_alg: u8,
     pub flags: u8,
     pub iterations: u16,
+    pub salt: Option<Vec<u8>>,
 }
 
 impl FromStr for NSEC3PARAM {
@@ -819,19 +820,24 @@ impl FromStr for NSEC3PARAM {
             Some(hash_alg),
             Some(flags),
             Some(iterations),
-            Some(dash),
-            None,
+            Some(salt_or_dash),
         ] = array::from_fn(|_| columns.next())
         else {
-            return Err("expected 8 columns".into());
+            return Err("expected at least 8 columns".into());
         };
 
         check_record_type::<Self>(record_type)?;
         check_class(class)?;
 
-        if dash != "-" {
-            todo!("salt is not implemented")
-        }
+        // Parse salt: either "-" (no salt) or a hex string
+        let salt = if salt_or_dash == "-" {
+            None
+        } else {
+            // Decode hex string to bytes
+            let bytes = hex::decode(salt_or_dash)
+                .map_err(|e| format!("failed to decode salt: {e}"))?;
+            Some(bytes)
+        };
 
         Ok(Self {
             zone: zone.parse()?,
@@ -839,6 +845,7 @@ impl FromStr for NSEC3PARAM {
             hash_alg: hash_alg.parse()?,
             flags: flags.parse()?,
             iterations: iterations.parse()?,
+            salt,
         })
     }
 }
@@ -851,12 +858,17 @@ impl fmt::Display for NSEC3PARAM {
             hash_alg,
             flags,
             iterations,
+            salt,
         } = self;
 
         let record_type = unqualified_type_name::<Self>();
+        let salt_str = match salt {
+            Some(bytes) => hex::encode(bytes),
+            None => "-".to_string(),
+        };
         write!(
             f,
-            "{zone}\t{ttl}\t{CLASS}\t{record_type}\t{hash_alg} {flags} {iterations} -"
+            "{zone}\t{ttl}\t{CLASS}\t{record_type}\t{hash_alg} {flags} {iterations} {salt_str}"
         )
     }
 }

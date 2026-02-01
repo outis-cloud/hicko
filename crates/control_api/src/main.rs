@@ -1,6 +1,5 @@
 use actix_web::{web, App, HttpResponse, HttpServer, Responder, HttpRequest, http::header};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use log::{info, warn};
 use tokio_postgres::{NoTls, Client as PgClient};
 use uuid::Uuid;
@@ -82,7 +81,6 @@ struct LoginResponse {
 }
 
 async fn login(body: web::Json<LoginRequest>, data: web::Data<AppState>) -> impl Responder {
-    let pool = &data.db;
     if let Ok(row) = (&*data.db).query_one("SELECT id::text, password_hash, role FROM users WHERE username = $1", &[&body.username]).await {
         let id_str: String = row.get(0);
         let id = id_str.clone();
@@ -101,7 +99,6 @@ async fn login(body: web::Json<LoginRequest>, data: web::Data<AppState>) -> impl
 }
 
 async fn create_user(req: web::Json<LoginRequest>, data: web::Data<AppState>) -> impl Responder {
-    let pool = &data.db;
     let mut rng = OsRng;
     let salt = SaltString::generate(&mut rng);
     let argon2 = Argon2::default();
@@ -137,7 +134,6 @@ async fn list_servers(data: web::Data<AppState>, req: HttpRequest) -> impl Respo
     if auth_from_header(&req, &data.jwt_secret).is_none() {
         return HttpResponse::Unauthorized().finish();
     }
-    let pool = &data.db;
     let rows = (&*data.db).query("SELECT id::text, name, address, region FROM servers", &[]).await.unwrap_or_default();
     let servers: Vec<ServerInfo> = rows.into_iter().map(|r| ServerInfo { id: r.get::<usize, String>(0), name: r.get(1), address: r.get(2), region: r.get(3) }).collect();
     HttpResponse::Ok().json(servers)
@@ -158,7 +154,6 @@ async fn create_server(body: web::Json<CreateServerReq>, data: web::Data<AppStat
     } else {
         return HttpResponse::Unauthorized().finish();
     }
-    let pool = &data.db;
     let id = Uuid::new_v4();
     let id_str = id.to_string();
     let res = (&*data.db).execute("INSERT INTO servers (id, name, address, region) VALUES ($1::uuid, $2, $3, $4)", &[&id_str, &body.name, &body.address, &body.region]).await;
@@ -178,7 +173,6 @@ struct AgentRegistration {
 }
 
 async fn agent_register(body: web::Json<AgentRegistration>, data: web::Data<AppState>) -> impl Responder {
-    let pool = &data.db;
     let id = Uuid::new_v4();
     let id_str = id.to_string();
     let res = (&*data.db).execute("INSERT INTO agents (id, name, addr) VALUES ($1::uuid, $2, $3)", &[&id_str, &body.name, &body.addr]).await;
@@ -192,7 +186,6 @@ async fn agent_register(body: web::Json<AgentRegistration>, data: web::Data<AppS
 }
 
 async fn agent_heartbeat(body: web::Json<AgentRegistration>, data: web::Data<AppState>) -> impl Responder {
-    let pool = &data.db;
     let res = (&*data.db).execute("UPDATE agents SET last_heartbeat = now() WHERE addr = $1", &[&body.addr]).await;
     match res {
         Ok(r) => {
@@ -206,6 +199,7 @@ async fn agent_heartbeat(body: web::Json<AgentRegistration>, data: web::Data<App
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct StartDnsReq {
     id: String,
     bind: String,
@@ -216,6 +210,7 @@ async fn start_dns_server(_body: web::Json<StartDnsReq>, _data: web::Data<FullSt
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct StopDnsReq {
     id: String,
 }
@@ -234,7 +229,6 @@ struct CreateGeoRuleReq {
 
 async fn create_georule(body: web::Json<CreateGeoRuleReq>, data: web::Data<FullState>, req: HttpRequest) -> impl Responder {
     if auth_from_header(&req, &data.inner.jwt_secret).is_none() { return HttpResponse::Unauthorized().finish(); }
-    let pool = &data.inner.db;
     let id = Uuid::new_v4();
     let zone_uuid = match Uuid::parse_str(&body.zone_id) {
         Ok(z) => z,
@@ -283,9 +277,119 @@ async fn create_zone(body: web::Json<CreateZoneReq>, data: web::Data<AppState>, 
     }
 }
 
+#[derive(Deserialize)]
+struct GeoResolveRequest {
+    zone_id: String,
+    client_ip: String,
+}
+
+/// Resolve a DNS response for a zone based on client's geographic location.
+/// Uses GeoRules to determine which target address to return.
+async fn resolve_by_geo(body: web::Json<GeoResolveRequest>, data: web::Data<FullState>) -> impl Responder {
+    // Parse client IP
+    let client_ip = match body.client_ip.parse::<std::net::IpAddr>() {
+        Ok(ip) => ip,
+        Err(_) => return HttpResponse::BadRequest().body("invalid client IP"),
+    };
+
+    // Fetch georules for this zone from DB
+    let rows = (&*data.inner.db)
+        .query(
+            "SELECT id::text, match_type, match_value, target FROM georules WHERE zone_id::text = $1",
+            &[&body.zone_id],
+        )
+        .await
+        .unwrap_or_default();
+
+    let rules: Vec<geodns::GeoRule> = rows
+        .into_iter()
+        .map(|r| geodns::GeoRule {
+            id: r.get::<usize, String>(0),
+            match_type: r.get::<usize, String>(1),
+            match_value: r.get::<usize, String>(2),
+            target: r.get::<usize, String>(3),
+        })
+        .collect();
+
+    // Get GeoIP DB from state
+    let geo_state = data.geo.lock().await;
+    let db = geo_state.db.as_ref().cloned();
+
+    // Create rule engine and evaluate
+    let mut engine = geodns::GeoRuleEngine::new(db);
+    engine.set_rules(rules);
+
+    // Evaluate and return target
+    match engine.evaluate(client_ip) {
+        Some(target) => HttpResponse::Ok().json(serde_json::json!({"target": target})),
+        None => HttpResponse::Ok().json(serde_json::json!({"target": None::<String>, "message": "no matching geo rule"})),
+    }
+}
+
 // Placeholder: function to push configuration to agents (secure HTTPS/gRPC in production)
+#[allow(dead_code)]
 async fn push_config_to_agent(_agent_id: &str) {
     // TODO: implement secure config push
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct ConfigPushRequest {
+    agent_id: String,
+    zone_id: String,
+    zone_config: serde_json::Value,
+}
+
+#[derive(Serialize)]
+struct ConfigPushResponse {
+    success: bool,
+    message: String,
+}
+
+/// Push DNS zone configuration to an agent securely (mTLS placeholder)
+/// In production: use rustls with client certificates for authentication
+async fn push_config_to_agents(
+    body: web::Json<ConfigPushRequest>,
+    data: web::Data<FullState>,
+    req: HttpRequest,
+) -> impl Responder {
+    // Verify admin role
+    if let Some(tok) = auth_from_header(&req, &data.inner.jwt_secret) {
+        if tok.claims.role != "admin" {
+            return HttpResponse::Forbidden().body("admin role required");
+        }
+    } else {
+        return HttpResponse::Unauthorized().finish();
+    }
+
+    // Fetch agent details from DB
+    let rows = (&*data.inner.db)
+        .query("SELECT id::text, addr FROM agents WHERE id::text = $1", &[&body.agent_id])
+        .await
+        .unwrap_or_default();
+
+    if rows.is_empty() {
+        return HttpResponse::NotFound().body("agent not found");
+    }
+
+    let _agent_addr: String = rows[0].get(1);
+
+    // In production, this would:
+    // 1. Use mTLS to securely connect to agent at agent_addr
+    // 2. Sign config with control plane private key
+    // 3. Send config blob to agent
+    // 4. Verify agent signature on acknowledgment
+
+    // For now, log the config push intention
+    info!(
+        "Config push scheduled for agent {} with zone {}",
+        body.agent_id, body.zone_id
+    );
+
+    HttpResponse::Ok().json(ConfigPushResponse {
+        success: true,
+        message: "config push queued".to_string(),
+    })
 }
 
 #[actix_web::main]
@@ -332,6 +436,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/v1/dns/stop", web::post().to(stop_dns_server))
             .route("/api/v1/georules", web::post().to(create_georule))
             .route("/api/v1/georules", web::get().to(list_georules))
+            .route("/api/v1/georules/resolve", web::post().to(resolve_by_geo))
+            .route("/api/v1/config/push", web::post().to(push_config_to_agents))
             .route("/health", web::get().to(health))
     })
     .bind(("0.0.0.0", 8080))?

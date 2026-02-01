@@ -673,7 +673,7 @@ impl FromStr for ExtendedDnsError {
             10 => Self::RrsigsMissing,
             18 => Self::Prohibited,
             22 => Self::NoReachableAuthority,
-            _ => todo!("EDE {code} has not yet been implemented"),
+            code => return Err(format!("unsupported EDE code: {code}").into()),
         };
 
         Ok(code)

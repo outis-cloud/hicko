@@ -2174,23 +2174,31 @@ mod mock_provider {
             MockSyncHandle
         }
 
-        #[allow(clippy::unimplemented)]
         fn connect_tcp(
             &self,
             _server_addr: std::net::SocketAddr,
             _bind_addr: Option<std::net::SocketAddr>,
             _timeout: Option<Duration>,
         ) -> Pin<Box<dyn Future<Output = Result<Self::Tcp, io::Error>> + Send>> {
-            unimplemented!();
+            Box::pin(async {
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "MockSyncRuntimeProvider does not support TCP connections",
+                ))
+            })
         }
 
-        #[allow(clippy::unimplemented)]
         fn bind_udp(
             &self,
             _local_addr: std::net::SocketAddr,
             _server_addr: std::net::SocketAddr,
         ) -> Pin<Box<dyn Future<Output = Result<Self::Udp, io::Error>> + Send>> {
-            unimplemented!();
+            Box::pin(async {
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "MockSyncRuntimeProvider does not support UDP connections",
+                ))
+            })
         }
     }
 

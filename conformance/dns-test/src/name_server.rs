@@ -816,7 +816,8 @@ fn expand_zone(zone: &FQDN) -> String {
         } else if *zone == FQDN::COM_TLD {
             "nameservers.com.".to_string()
         } else {
-            unimplemented!()
+            // For unknown TLDs, use them as-is with nameservers prefix
+            format!("nameservers.{}", zone.as_str())
         }
     } else {
         zone.to_string()
