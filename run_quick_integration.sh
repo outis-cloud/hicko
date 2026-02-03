@@ -1,11 +1,16 @@
 #!/bin/bash
 
-# Simplified Integration Test - More Resilient Version
+# Hickory DNS Manager - Quick Integration Test
+# Starts PostgreSQL, API, and UI with minimal setup
+# Best for rapid testing and development
+
+set -e
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 WORKSPACE_DIR="/workspaces/hicko"
