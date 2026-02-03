@@ -16,7 +16,7 @@ once_cell = { workspace = true }
 uuid = { version = "0.8", features = ["v4"] }
 tokio-postgres = { version = "0.7" }
 serde_qs = "0.7"
-jsonwebtoken = "8"
+jsonwebtoken = "10"
 argon2 = "0.4"
 tracing = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
