@@ -8,7 +8,7 @@ actix-web = { version = "4", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { workspace = true }
-env_logger = "0.10"
+env_logger = "0.11"
 log = "0.4"
 prometheus = "0.14"
 actix-web-prom = "0.6"
