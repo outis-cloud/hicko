@@ -1,0 +1,108 @@
+# 🎯 INTEGRATION SCRIPTS - QUICK REFERENCE
+
+## RUN THIS
+
+```bash
+bash integrate.sh
+```
+
+That's the master integration script.
+
+## OR FOR QUICK DEV MODE
+
+```bash
+bash run_quick_integration.sh
+```
+
+---
+
+## THEN STOP WITH
+
+```bash
+bash stop-services.sh
+```
+
+---
+
+## CHECK SYSTEM WITH
+
+```bash
+bash check_system.sh
+```
+
+---
+
+## ACCESS APPLICATION AT
+
+```
+http://localhost:3000
+Username: admin
+Password: admin123
+```
+
+---
+
+## VIEW LOGS
+
+```bash
+tail -f /tmp/hickory-logs/api.log
+tail -f /tmp/hickory-logs/ui.log
+```
+
+---
+
+## KEY FILES (READ IN ORDER)
+
+1. **START_HERE_INTEGRATION.txt** - One page summary
+2. **START_INTEGRATION.md** - Quick start guide
+3. **INTEGRATION.md** - Complete manual
+4. **INTEGRATION_TROUBLESHOOTING.md** - Problem solving
+
+---
+
+## SCRIPTS AVAILABLE
+
+| Script | Purpose | Time |
+|--------|---------|------|
+| integrate.sh | Full integration (recommended) | 10-15 min |
+| run_quick_integration.sh | Quick dev mode | 2-5 min |
+| stop-services.sh | Stop all services | <1 min |
+| check_system.sh | Verify prerequisites | 30 sec |
+
+---
+
+## SERVICES STARTED
+
+- PostgreSQL (port 5432)
+- Rust API (port 8080)
+- React UI (port 3000)
+- Optional E2E tests
+
+---
+
+## TIMELINE
+
+First run: 10-15 minutes
+Subsequent: 1-2 minutes
+
+---
+
+## CREDENTIALS
+
+```
+UI Login:      admin / admin123
+DB URL:        postgres://postgres:password@localhost:5432/hickory
+```
+
+---
+
+## HELP
+
+- Quick start: START_HERE_INTEGRATION.txt
+- Full guide: INTEGRATION.md
+- Issues: INTEGRATION_TROUBLESHOOTING.md
+- Navigation: INTEGRATION_DOCUMENTATION_INDEX.md
+
+---
+
+**READY?** Run: `bash integrate.sh`
