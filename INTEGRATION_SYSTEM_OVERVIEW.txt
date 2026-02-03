@@ -1,0 +1,253 @@
+# Integration System Overview
+
+## 📋 Scripts at a Glance
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│           HICKORY DNS MANAGER - INTEGRATION                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  🎯 MASTER SCRIPTS (2)                                      │
+│  ├─ integrate.sh              [Complete setup]              │
+│  │  └─ Full: PostgreSQL → API → UI → Tests                  │
+│  │     Time: 10-15 min (first) / 1-2 min (subsequent)      │
+│  │     When: Full integration testing, production setup     │
+│  │                                                           │
+│  └─ run_quick_integration.sh   [Quick mode]                 │
+│     └─ Fast: Optional services, graceful errors             │
+│        Time: 2-5 minutes                                    │
+│        When: Rapid development, testing                     │
+│                                                               │
+│  🛠️ HELPER SCRIPTS (1)                                      │
+│  └─ stop-services.sh          [Cleanup]                     │
+│     └─ Stops: API, UI, PostgreSQL                           │
+│        Time: 5 seconds                                      │
+│        When: Shutdown, service restart                      │
+│                                                               │
+│  🔍 EXISTING HELPERS (2)                                    │
+│  ├─ check_system.sh           [Prerequisite check]          │
+│  │  └─ Verifies: Docker, Node, Rust, files                 │
+│  │     When: Before running integrate.sh                    │
+│  │                                                           │
+│  └─ verify_production_readiness.sh [Compliance]             │
+│     └─ Used by: integrate.sh automatically                  │
+│        When: Final validation                               │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│             INTEGRATION EXECUTION FLOW                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  bash integrate.sh                                           │
+│        ↓                                                     │
+│  [1] Prerequisites Check (5 sec)                            │
+│      └─ Docker, Node.js, Rust available?                   │
+│         └─ Exit if missing                                  │
+│        ↓                                                     │
+│  [2] PostgreSQL Setup (15 sec)                             │
+│      ├─ Stop old container                                  │
+│      ├─ Start new container (postgres:15-alpine)           │
+│      ├─ Wait for port 5432                                  │
+│      └─ Database ready                                      │
+│        ↓                                                     │
+│  [3] API Build & Run (3-5 min build, 30 sec start)         │
+│      ├─ cd crates/control_api                               │
+│      ├─ cargo build --release                               │
+│      ├─ Start: ./target/release/control_api                 │
+│      ├─ Wait for http://localhost:8080/health              │
+│      └─ API ready                                           │
+│        ↓                                                     │
+│  [4] UI Setup & Run (1-2 min install, 10 sec start)        │
+│      ├─ cd web/ui                                           │
+│      ├─ npm install (if needed)                             │
+│      ├─ npm run dev                                         │
+│      ├─ Wait for http://localhost:3000                     │
+│      └─ UI ready                                            │
+│        ↓                                                     │
+│  [5] E2E Tests (Optional, 5-10 min)                        │
+│      ├─ npm run test:e2e                                    │
+│      ├─ Run 40+ Playwright scenarios                        │
+│      └─ Log results                                         │
+│        ↓                                                     │
+│  [6] Final Report (5 sec)                                   │
+│      ├─ ✓ PostgreSQL running                                │
+│      ├─ ✓ API running (port 8080)                           │
+│      ├─ ✓ UI running (port 3000)                            │
+│      ├─ Access: http://localhost:3000                      │
+│      ├─ Login: admin / admin123                             │
+│      ├─ Logs: /tmp/hickory-logs/                            │
+│      └─ Stop: bash stop-services.sh                         │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│              SERVICES ARCHITECTURE                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌────────────────────────────────────────────────────┐    │
+│  │  React Frontend (http://localhost:3000)           │    │
+│  │  ├─ Vite dev server                               │    │
+│  │  ├─ Dark mode, responsive UI                      │    │
+│  │  ├─ 8 pages, 10+ components                       │    │
+│  │  └─ Authentication with JWT                       │    │
+│  └────────────────────────────────────────────────────┘    │
+│           ↑                                                  │
+│           │ REST API calls                                   │
+│           ↓                                                  │
+│  ┌────────────────────────────────────────────────────┐    │
+│  │  Rust Backend (http://localhost:8080)             │    │
+│  │  ├─ Actix-web framework                           │    │
+│  │  ├─ RESTful API endpoints                          │    │
+│  │  ├─ JWT authentication                            │    │
+│  │  ├─ Database queries                              │    │
+│  │  └─ Error handling                                │    │
+│  └────────────────────────────────────────────────────┘    │
+│           ↑                                                  │
+│           │ SQL queries                                      │
+│           ↓                                                  │
+│  ┌────────────────────────────────────────────────────┐    │
+│  │  PostgreSQL (localhost:5432)                      │    │
+│  │  ├─ Database: hickory                             │    │
+│  │  ├─ User: postgres / password                     │    │
+│  │  ├─ Version: 15 (Alpine)                          │    │
+│  │  └─ Running in Docker container                   │    │
+│  └────────────────────────────────────────────────────┘    │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│             LOGGING & MONITORING                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  /tmp/hickory-logs/                                          │
+│  ├─ api.log              → API output & errors               │
+│  ├─ ui.log               → npm dev server output             │
+│  ├─ postgres.log         → PostgreSQL startup                │
+│  ├─ build.log            → cargo build output                │
+│  ├─ npm-install.log      → npm install output                │
+│  ├─ e2e-tests.log        → Playwright test results           │
+│  ├─ api.pid              → API process ID                    │
+│  └─ ui.pid               → UI process ID                     │
+│                                                               │
+│  View real-time:                                             │
+│  $ tail -f /tmp/hickory-logs/*.log                           │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│            QUICK COMMAND REFERENCE                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  Start full integration                                      │
+│  $ bash integrate.sh                                        │
+│                                                               │
+│  Quick mode (dev)                                            │
+│  $ bash run_quick_integration.sh                            │
+│                                                               │
+│  Stop all services                                           │
+│  $ bash stop-services.sh                                    │
+│                                                               │
+│  Check system ready                                          │
+│  $ bash check_system.sh                                     │
+│                                                               │
+│  View logs                                                   │
+│  $ tail -f /tmp/hickory-logs/api.log                        │
+│  $ tail -f /tmp/hickory-logs/ui.log                         │
+│  $ tail -f /tmp/hickory-logs/postgres.log                   │
+│                                                               │
+│  Access application                                          │
+│  $ open http://localhost:3000  (or in browser)              │
+│                                                               │
+│  Run E2E tests                                               │
+│  $ cd web/ui && npm run test:e2e                            │
+│                                                               │
+│  Check API health                                            │
+│  $ curl http://localhost:8080/health                        │
+│                                                               │
+│  List running services                                       │
+│  $ ps aux | grep -E "(control_api|npm|postgres)"            │
+│                                                               │
+│  Find processes on ports                                     │
+│  $ netstat -tulpn | grep -E "(3000|8080|5432)"              │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│            ENVIRONMENT VARIABLES                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  Set automatically by integrate.sh:                          │
+│                                                               │
+│  DATABASE_URL                                                │
+│  =postgres://postgres:password@localhost:5432/hickory       │
+│                                                               │
+│  ADMIN_USERNAME=admin                                        │
+│  ADMIN_PASSWORD=admin123                                     │
+│  JWT_SECRET=dev-secret-key-change-in-production             │
+│  RUST_LOG=info                                               │
+│                                                               │
+│  For production, change:                                     │
+│  - JWT_SECRET (security)                                     │
+│  - ADMIN_PASSWORD (default credentials)                      │
+│  - POSTGRES credentials (security)                           │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│            DOCUMENTATION FILES                               │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  START_INTEGRATION.md         Quick start guide              │
+│  INTEGRATION.md               Complete usage guide           │
+│  INTEGRATION_TROUBLESHOOTING  Problem solving               │
+│  SCRIPTS_CONSOLIDATED.md      What changed                   │
+│  INTEGRATION_SETUP_COMPLETE   Setup overview                 │
+│  INTEGRATION_FINAL_SUMMARY    This summary                   │
+│                                                               │
+│  Other helpful docs:                                         │
+│  README.md                    Project overview               │
+│  DEVELOPER_QUICK_GUIDE.md     Development tips               │
+│  ARCHITECTURE.md              System design                  │
+│  README-DEPLOY.md             Production deployment          │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 🎯 Master Scripts Summary
+
+### integrate.sh
+- **Purpose:** Complete, production-ready integration
+- **Features:** Comprehensive checks, exit on errors, full validation
+- **Best for:** Full system testing, CI/CD, production setup
+- **Time:** 10-15 min (first) / 1-2 min (subsequent)
+
+### run_quick_integration.sh  
+- **Purpose:** Fast development/iteration
+- **Features:** Graceful errors, skip missing services, quick feedback
+- **Best for:** Local dev, rapid testing, missing dependencies OK
+- **Time:** 2-5 minutes
+
+### stop-services.sh
+- **Purpose:** Clean service shutdown
+- **Features:** Stops API, UI, PostgreSQL, cleanup stray processes
+- **Best for:** Between tests, service restart, cleanup
+
+## ✅ System Requirements
+
+```
+✓ Docker          - PostgreSQL container
+✓ Node.js 16+     - React UI
+✓ Rust toolchain  - API backend
+✓ Ports available - 3000, 8080, 5432
+```
+
+## 🚀 Ready to Start
+
+```bash
+bash integrate.sh
+```
+
+Then: http://localhost:3000 (admin/admin123)
+
+For help: See **START_INTEGRATION.md** or **INTEGRATION.md**

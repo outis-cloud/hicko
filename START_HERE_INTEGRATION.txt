@@ -1,0 +1,168 @@
+# INTEGRATION SYSTEM - ONE PAGE SUMMARY
+
+## 🎯 WHAT TO RUN
+
+```bash
+bash integrate.sh
+```
+
+That's it. One command starts everything.
+
+## ⏱️ HOW LONG
+
+- **First run:** 10-15 minutes
+- **Subsequent runs:** 1-2 minutes
+
+## 🌐 THEN ACCESS
+
+- **URL:** http://localhost:3000
+- **Username:** admin
+- **Password:** admin123
+
+## 📊 WHAT STARTS
+
+1. **PostgreSQL** (Docker, port 5432)
+2. **Rust API** (Actix-web, port 8080)
+3. **React UI** (Vite dev server, port 3000)
+4. **Optional E2E Tests** (Playwright, 40+ scenarios)
+
+## 🛑 WHEN DONE
+
+```bash
+bash stop-services.sh
+```
+
+Or press Ctrl+C.
+
+## 📚 DOCUMENTATION
+
+| Document | Purpose | Time |
+|----------|---------|------|
+| START_INTEGRATION.md | Quick start | 5 min |
+| INTEGRATION.md | Full guide | 15 min |
+| INTEGRATION_TROUBLESHOOTING.md | Fixes | Reference |
+
+## 🔍 MONITOR STARTUP
+
+In another terminal:
+```bash
+tail -f /tmp/hickory-logs/api.log
+```
+
+## 🐛 IF SOMETHING FAILS
+
+1. Check logs:
+   ```bash
+   tail -f /tmp/hickory-logs/*.log
+   ```
+
+2. See troubleshooting:
+   ```bash
+   INTEGRATION_TROUBLESHOOTING.md
+   ```
+
+3. Common fixes:
+   - Docker not running: `sudo systemctl start docker`
+   - Port conflict: `lsof -i :3000` then `kill -9 <PID>`
+   - npm issue: `cd web/ui && npm cache clean --force && npm install`
+
+## ✅ SUCCESS INDICATORS
+
+```bash
+✓ No script errors
+✓ curl http://localhost:8080/health → OK
+✓ Can access http://localhost:3000
+✓ Can login with admin/admin123
+```
+
+## 🎮 QUICK COMMANDS
+
+```bash
+# Full integration
+bash integrate.sh
+
+# Quick mode (dev)
+bash run_quick_integration.sh
+
+# Stop services
+bash stop-services.sh
+
+# Check system
+bash check_system.sh
+
+# View all logs
+tail -f /tmp/hickory-logs/*
+
+# API health
+curl http://localhost:8080/health
+
+# Run E2E tests
+cd web/ui && npm run test:e2e
+```
+
+## 🔐 CREDENTIALS
+
+```
+App login:        admin / admin123
+Database URL:     postgres://postgres:password@localhost:5432/hickory
+JWT Secret:       dev-secret-key-change-in-production (for production)
+```
+
+## 📍 KEY FILES
+
+| File | Purpose |
+|------|---------|
+| integrate.sh | Master integration (RUN THIS) |
+| run_quick_integration.sh | Quick dev mode |
+| stop-services.sh | Stop services |
+| /tmp/hickory-logs/ | All service logs |
+| http://localhost:3000 | Application |
+
+## 🏗️ ARCHITECTURE
+
+```
+integrate.sh
+  ├─ Check Docker, Node.js, Rust
+  ├─ Start PostgreSQL (Docker)
+  ├─ Build & run Rust API
+  ├─ Install & run React UI
+  ├─ Optional: Run E2E tests
+  └─ Show final status
+```
+
+## 📖 HELP & SUPPORT
+
+- **Quick answers:** START_INTEGRATION.md
+- **Full guide:** INTEGRATION.md
+- **Troubleshooting:** INTEGRATION_TROUBLESHOOTING.md
+- **Navigation:** INTEGRATION_DOCUMENTATION_INDEX.md
+- **Understanding:** INTEGRATION_SYSTEM_OVERVIEW.txt
+
+## 🎉 BEGIN NOW
+
+```bash
+# Step 1: Run integration
+bash integrate.sh
+
+# Step 2: Wait ~10 minutes first time
+# Monitor: tail -f /tmp/hickory-logs/api.log
+
+# Step 3: Open browser
+http://localhost:3000
+
+# Step 4: Login
+admin / admin123
+
+# Step 5: Use application
+
+# Step 6: Stop when done
+bash stop-services.sh
+```
+
+---
+
+**That's all you need to know to get started.**
+
+For details, see START_INTEGRATION.md or INTEGRATION.md
+
+**Start with:** `bash integrate.sh`

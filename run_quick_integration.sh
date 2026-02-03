@@ -74,6 +74,7 @@ if docker ps > /dev/null 2>&1; then
     --network host \
     -e POSTGRES_DB=hickory \
     -e POSTGRES_PASSWORD=password \
+    -e POSTGRES_INITDB_ARGS="--encoding=UTF8" \
     postgres:15-alpine \
     > "$LOGS_DIR/postgres.log" 2>&1; then
     
@@ -89,7 +90,7 @@ if docker ps > /dev/null 2>&1; then
     done
     echo ""
   else
-    log_warn "PostgreSQL startup failed (skipping)"
+    log_warn "PostgreSQL startup failed. Check: docker logs hickory-postgres"
   fi
 else
   log_warn "Docker not available (skipping PostgreSQL)"
@@ -115,11 +116,11 @@ if command -v cargo &> /dev/null; then
     log_success "API built successfully"
     
     log_info "Starting API on port 8080..."
-    ./target/release/control_api > "$LOGS_DIR/api.log" 2>&1 &
+    nohup ./target/release/control_api > "$LOGS_DIR/api.log" 2>&1 &
     API_PID=$!
     echo $API_PID > "$LOGS_DIR/api.pid"
     
-    sleep 3
+    sleep 5
     log_success "API started (PID: $API_PID)"
   else
     log_warn "API build failed (see $LOGS_DIR/build.log)"
@@ -148,11 +149,11 @@ if command -v node &> /dev/null; then
   fi
   
   log_info "Starting UI dev server on port 3000..."
-  npm run dev > "$LOGS_DIR/ui.log" 2>&1 &
+  nohup npm run dev > "$LOGS_DIR/ui.log" 2>&1 &
   UI_PID=$!
   echo $UI_PID > "$LOGS_DIR/ui.pid"
   
-  sleep 5
+  sleep 8
   log_success "UI started (PID: $UI_PID)"
 else
   log_warn "Node.js not available (skipping UI)"

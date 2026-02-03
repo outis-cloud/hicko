@@ -90,15 +90,17 @@ docker rm hickory-postgres 2>/dev/null && log_success "Removed" || true
 sleep 1
 
 log_section "Starting PostgreSQL 15..."
-docker run -d \
+if docker run -d \
   --name hickory-postgres \
   --network host \
   -e POSTGRES_DB=hickory \
   -e POSTGRES_PASSWORD=password \
   -e POSTGRES_INITDB_ARGS="--encoding=UTF8" \
-  postgres:15-alpine > "$LOGS_DIR/postgres.log" 2>&1 || log_error "Failed to start PostgreSQL"
-
-log_success "PostgreSQL container started"
+  postgres:15-alpine > "$LOGS_DIR/postgres.log" 2>&1; then
+  log_success "PostgreSQL container started"
+else
+  log_error "Failed to start PostgreSQL container. Check Docker is running."
+fi
 
 # Wait for PostgreSQL to be ready
 log_section "Waiting for PostgreSQL to accept connections..."
@@ -143,13 +145,13 @@ log_success "API process started (PID: $API_PID)"
 
 # Wait for API to be ready
 log_section "Waiting for API health check..."
-for i in {1..60}; do
+for i in {1..90}; do
   if curl -s http://localhost:8080/health > /dev/null 2>&1; then
     log_success "API is ready"
     break
   fi
-  if [ $i -eq 60 ]; then
-    log_warn "API health check timeout after 60 seconds (may still be initializing)"
+  if [ $i -eq 90 ]; then
+    log_warn "API health check timeout after 90 seconds (may still be initializing)"
   fi
   echo -n "."
   sleep 1
@@ -182,13 +184,13 @@ log_success "UI process started (PID: $UI_PID)"
 
 # Wait for UI to be ready
 log_section "Waiting for UI to respond..."
-for i in {1..60}; do
+for i in {1..90}; do
   if curl -s http://localhost:3000 > /dev/null 2>&1; then
     log_success "UI is ready"
     break
   fi
-  if [ $i -eq 60 ]; then
-    log_warn "UI startup timeout after 60 seconds"
+  if [ $i -eq 90 ]; then
+    log_warn "UI startup timeout after 90 seconds"
   fi
   echo -n "."
   sleep 1
