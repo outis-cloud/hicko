@@ -15,7 +15,7 @@ actix-web-prom = "0.6"
 once_cell = { workspace = true }
 uuid = { version = "0.8", features = ["v4"] }
 tokio-postgres = { version = "0.7" }
-serde_qs = "0.7"
+serde_qs = "1.0"
 jsonwebtoken = "8"
 argon2 = "0.4"
 tracing = { workspace = true }
